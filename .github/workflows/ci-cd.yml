@@ -185,7 +185,7 @@ jobs:
       - name: Show container logs
         run: docker logs api
     
-  terraform-deployment:
+  terraform-k8s-deployment:
     name: Terraform Deployment
     runs-on: ubuntu-22.04
     needs: [build-and-push, integration-tests]
@@ -245,10 +245,34 @@ jobs:
         run: |
           terraform apply -auto-approve tfplan
 
+      - name: Setup kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Configure kubeconfig
+        run: |
+          aws eks --region us-east-1 update-kubeconfig --name eks-cluster
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install api ./kubernetes \
+            --namespace default \
+            --set env[0].value="$(terraform output -raw db_url)"
+            --set env[1].value=$TF_VAR_secret_key
+            --set env[2].value=$TF_VAR_algorithm
+            --set env[3].value=$TF_VAR_access_token_expire_minutes
+
+      - name: Get the API URL
+        run: |
+          API_URL="http://$(kubectl get svc k8s-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+          echo "API_URL=$API_URL" >> $GITHUB_ENV
+
       - name: Health check
         run: |
           for i in {1..30}; do
-            if curl -f "$(terraform output -raw api_url)/health"; then
+            if curl -f "$API_URL/health"; then
               echo "Health check passed"
               exit 0
             fi

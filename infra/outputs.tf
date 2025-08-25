@@ -10,6 +10,6 @@ output "private_subnet_ids" {
     value = module.vpc.private_subnet_ids
 }
 
-output "api_url" {
-    value = module.vpc.api_url
+output "db_url" {
+  value = module.vpc.db_url
 }

@@ -10,6 +10,6 @@ output "private_subnet_ids" {
   value = aws_subnet.private[*].id
 }
 
-output "api_url" {
-  value = "http://${aws_lb.alb.dns_name}"
+output "db_url" {
+  value = "postgres://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.endpoint}:5432/${var.db_name}"
 }

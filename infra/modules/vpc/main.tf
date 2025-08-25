@@ -48,14 +48,6 @@ resource "aws_nat_gateway" "ngw" {
     subnet_id     = aws_subnet.public[count.index].id
 }
 
-resource "aws_lb" "alb" {
-    name               = "alb"
-    internal           = false
-    load_balancer_type = "application"
-    subnets            = aws_subnet.public[*].id
-    security_groups    = [aws_security_group.alb_sg.id]
-}
-
 resource "aws_route_table" "private_route_table" {
     count = var.private_count
     vpc_id = aws_vpc.my_vpc.id
@@ -87,32 +79,6 @@ resource "aws_route_table_association" "public_associations" {
     route_table_id = aws_route_table.public_route_table.id
 }
 
-resource "aws_ecs_cluster" "cluster" {
-    name = "cluster"
-
-    setting {
-        name  = "containerInsights"
-        value = "enabled"
-    }
-}
-
-resource "aws_iam_role" "ecs_task_role" {
-    name = "ecs-task-role"
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17",
-        Statement = [{
-            Effect    = "Allow"
-            Principal = { Service = "ecs-tasks.amazonaws.com" }
-            Action    = "sts:AssumeRole"
-        }]
-    })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_policy" {
-    role       = aws_iam_role.ecs_task_role.name
-    policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
 resource "aws_security_group" "alb_sg" {
     name   = "alb-sg"
     vpc_id = aws_vpc.my_vpc.id
@@ -132,56 +98,6 @@ resource "aws_security_group" "alb_sg" {
     }
 }
 
-resource "aws_security_group" "ecs_sg" {
-    name   = "ecs-sg"
-    vpc_id = aws_vpc.my_vpc.id
-
-    ingress {
-        from_port       = 8000
-        to_port         = 8000
-        protocol        = "tcp"
-        security_groups = [aws_security_group.alb_sg.id]
-    }
-
-    egress {
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-}
-
-resource "aws_lb_target_group" "lb_tg" {
-    name     = "lb-tg"
-    port     = 8000
-    protocol = "HTTP"
-    vpc_id   = aws_vpc.my_vpc.id
-
-    health_check {
-        path                = "/health"
-        interval            = 30
-        timeout             = 10
-        healthy_threshold   = 2
-        unhealthy_threshold = 3
-        matcher             = "200-299"    
-    }
-
-    target_type = "ip"
-}
-
-resource "aws_lb_listener" "listener" {
-    load_balancer_arn = aws_lb.alb.arn
-    port = 80
-    protocol = "HTTP"
-
-    default_action {
-        type = "forward"
-        target_group_arn = aws_lb_target_group.lb_tg.arn
-    }
-
-    depends_on = [aws_lb_target_group.lb_tg]
-}
-
 resource "aws_security_group" "rds_sg" {
     name   = "rds-sg"
     vpc_id = aws_vpc.my_vpc.id
@@ -190,14 +106,14 @@ resource "aws_security_group" "rds_sg" {
         from_port       = 5432
         to_port         = 5432
         protocol        = "tcp"
-        security_groups = [aws_security_group.ecs_sg.id]
+        security_groups = [aws_security_group.fargate_profile_sg.id]
     }
 
     egress {
         from_port   = 0
         to_port     = 0
         protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
+        cidr_blocks = aws_subnet.private[*].cidr_block
     }
 }
 
@@ -225,66 +141,110 @@ resource "aws_db_instance" "postgres_db" {
     skip_final_snapshot = true
 }
 
-resource "aws_ecs_task_definition" "api_task" {
-    family                   = "api_task"
-    network_mode             = "awsvpc"
-    requires_compatibilities = ["FARGATE"]
-    cpu                      = 512
-    memory                   = 1024
-    execution_role_arn       = aws_iam_role.ecs_task_role.arn
-    task_role_arn            = aws_iam_role.ecs_task_role.arn
+resource "aws_eks_cluster" "eks_cluster" {
+    name     = "eks-cluster"
+    role_arn = aws_iam_role.eks_cluster_role.arn
 
-    container_definitions = jsonencode([
-        {
-            name = "api"
-            image = var.image
-            cpu = 256
-            memory = 512
-            essential = true
-            portMappings = [{ 
-                containerPort = 8000,
-                protocol      = "tcp"
-            }]
-            environment = [
-                {
-                    name = "DATABASE_URL",
-                    value = "postgres://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.endpoint}:5432/${var.db_name}"
-                },
-                {
-                    name = "SECRET_KEY"
-                    value = var.secret_key
-                },
-                {
-                    name = "ALGORITHM"
-                    value = var.algorithm
-                },
-                {
-                    name = "ACCESS_TOKEN_EXPIRE_MINUTES"
-                    value = var.access_token_expire_minutes
-                }
-            ]
-        }
-    ])
+    vpc_config {
+        subnet_ids = aws_subnet.private[*].id
+    }
+
+    version = "1.30"
 }
 
-resource "aws_ecs_service" "api_service" {
-    name = "api-service"
-    cluster = aws_ecs_cluster.cluster.id
-    task_definition = aws_ecs_task_definition.api_task.arn
-    desired_count = 4
-    launch_type = "FARGATE"
+resource "aws_iam_role" "eks_cluster_role" {
+    name = "eks-cluster-role"
 
-    network_configuration {
-        subnets = aws_subnet.private[*].id
-        security_groups = [aws_security_group.ecs_sg.id]
-        assign_public_ip = false
+    assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+            Effect = "Allow"
+            Action = "sts:AssumeRole"
+            Principal = { Service = "eks.amazonaws.com" }
+        }]
+    })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+    role = aws_iam_role.eks_cluster_role.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+resource "aws_eks_fargate_profile" "eks_fargate_profile" {
+    cluster_name           = aws_eks_cluster.eks_cluster.name
+    fargate_profile_name   = "eks-fargate-profile"
+    pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution_role.arn
+    subnet_ids             = aws_subnet.private[*].id
+    security_group_ids     = [aws_security_group.fargate_profile_sg.id]
+
+    selector {
+        namespace = "default"
     }
 
-    load_balancer {
-        target_group_arn = aws_lb_target_group.lb_tg.arn
-        container_name = "api"
-        container_port = 8000
+    selector {
+        namespace = "kube-system"
+        labels = {
+            k8s-app = "kube-dns"
+        }
     }
+}
 
-    depends_on = [aws_lb_listener.listener]
+resource "aws_iam_role" "eks_fargate_pod_execution_role" {
+    name = "eks-fargate-pod-execution-role"
+
+    assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement =[{
+            Effect = "Allow"
+            Action = "sts:AssumeRole"
+            Principal = { Service = "eks-fargate-pods.amazonaws.com" }
+        }]
+    })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
+    role = aws_iam_role.eks_fargate_pod_execution_role.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+}
+
+resource "aws_security_group" "fargate_profile_sg" {
+    name   = "fargate-profile-sg"
+    vpc_id = aws_vpc.my_vpc.id
+
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = aws_subnet.private[*].cidr_block
+    }
+}
+
+data "aws_iam_openid_connect_provider" "eks_identifier" {
+    url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+}
+
+data "aws_iam_policy_document" "alb_controller_assume_role" {
+    statement {
+        actions = ["sts:AssumeRoleWithWebIdentity"]
+        effect  = "Allow"
+        principals {
+            type        = "Federated"
+            identifiers = [data.aws_iam_openid_connect_provider.eks_identifier.arn]
+        }
+        condition {
+            test     = "StringEquals"
+            variable = "${replace(data.aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
+            values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
+        }
+    }
+}
+
+resource "aws_iam_role" "alb_controller" {
+    name               = "aws-load-balancer-controller"
+    assume_role_policy = data.aws_iam_policy_document.alb_controller_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "alb_controller" {
+    policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
+    role       = aws_iam_role.alb_controller.name
 }

@@ -1,0 +1,17 @@
+venv/
+.env
+__pycache__/
+__pycache__/
+*.pyc
+.env.*
+.env.*
+.DS_Store
+.idea/
+*.sqlite3
+*.db
+infra/terraform.tfvars
+infra/.terraform
+infra/.terraform.lock.hcl
+infra/tfplan
+infra/terraform.tfstate
+infra/terraform.tfstate.backup

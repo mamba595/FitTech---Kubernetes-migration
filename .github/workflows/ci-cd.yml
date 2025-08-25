@@ -1,0 +1,261 @@
+name: 'CI/CD pipeline'
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  ECR_REPOSITORY: deployment
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov flake8 safety
+
+      - name: Linting and formatting checks
+        run: |
+          flake8 app/ --count --ignore=E,W,F401,F811 --select=E9,F63,F7,F821 --show-source --statistics
+          flake8 app/ --count --max-line-length=88 --ignore=E,W,F401,F811 --statistics
+
+      - name: Run security checks
+        run: |
+          safety check -r requirements.txt
+
+      - name: Run unit tests
+        run: |
+          export PYTHONPATH="${PYTHONPATH}:."
+          pytest tests/unit
+
+  build-and-push:
+    name: Build and Push to ECR
+    runs-on: ubuntu-22.04
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/deployment
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: 'table'
+          exit-code: '1'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-22.04
+    needs: build-and-push
+    permissions:
+      contents: read
+      id-token: write
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: yourpassword
+          POSTGRES_DB: fitness_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://postgres:yourpassword@postgres:5432/fitness_db
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      ALGORITHM: ${{ secrets.ALGORITHM }}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Pull Docker image
+        run: |
+          digest="${{ needs.build-and-push.outputs.image-digest }}"
+          digest=$(echo "$digest" | tr -d '\n' | tr -d ' ')
+          IMAGE=${{ steps.login-ecr.outputs.registry }}/deployment@$digest
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker pull "$IMAGE"
+      
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            sleep 10
+          done
+
+      - name: Run container
+        run: |
+          network=$(docker network ls --format '{{.Name}}' | grep github | head -n1)
+          docker run -d --name api --network "$network" \
+          -e DATABASE_URL=${{ env.DATABASE_URL }} \
+          -e SECRET_KEY=${{ env.SECRET_KEY }} \
+          -e ALGORITHM=${{ env.ALGORITHM }} \
+          -e ACCESS_TOKEN_EXPIRE_MINUTES=${{ env.ACCESS_TOKEN_EXPIRE_MINUTES }} \
+          -p 8000:8000 "$IMAGE"
+
+      - name: Check container status
+        run: docker ps -a
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests
+
+      - name: Wait for container
+        run: |
+          for i in {1..30}; do
+            curl -sf http://localhost:8000/health && break
+            sleep 10
+          done
+      
+      - name: Run integration tests
+        run: |
+          export PYTHONPATH="${PYTHONPATH}:."
+          pytest -v tests/integration
+
+      - name: Show container logs
+        run: docker logs api
+    
+  terraform-deployment:
+    name: Terraform Deployment
+    runs-on: ubuntu-22.04
+    needs: [build-and-push, integration-tests]
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      TF_VAR_db_name: ${{ secrets.DB_NAME}}
+      TF_VAR_db_username: ${{ secrets.DB_USERNAME }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_image: ${{ needs.build-and-push.outputs.image-digest }}
+      TF_VAR_secret_key: ${{ secrets.SECRET_KEY }}
+      TF_VAR_algorithm: ${{ secrets.ALGORITHM }}
+      TF_VAR_access_token_expire_minutes: ${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}
+
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Set image
+        run: |
+          digest="${{ needs.build-and-push.outputs.image-digest }}"
+          digest=$(echo "$digest" | tr -d '\n' | tr -d ' ')
+          IMAGE=${{ steps.login-ecr.outputs.registry }}/deployment@$digest
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "TF_VAR_image=$IMAGE" >> $GITHUB_ENV
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.0
+      
+      - name: Terraform Init
+        run: |
+          terraform init
+
+      - name: Terraform Plan
+        run: |
+          terraform plan -out=tfplan
+      
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve tfplan
+
+      - name: Health check
+        run: |
+          for i in {1..30}; do
+            if curl -f "$(terraform output -raw api_url)/health"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 20
+          done
+
+      - name: Clean infrastructure
+        if: always()
+        run: |
+          terraform destroy -auto-approve

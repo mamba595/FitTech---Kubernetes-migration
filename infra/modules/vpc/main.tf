@@ -208,10 +208,7 @@ resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
 
 data "aws_iam_openid_connect_provider" "eks_identifier" {
     url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
-
-    lifecycle {
-        ignore_changes = [url]
-    }
+    depends_on = [aws_eks_cluster.eks_cluster]
 }
 
 data "aws_iam_policy_document" "alb_controller_assume_role" {

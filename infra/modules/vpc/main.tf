@@ -106,7 +106,7 @@ resource "aws_security_group" "rds_sg" {
         from_port       = 5432
         to_port         = 5432
         protocol        = "tcp"
-        security_groups = aws_subnet.private[*].cidr_block
+        cidr_blocks = aws_subnet.private[*].cidr_block
     }
 
     egress {
@@ -172,7 +172,7 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
 
 resource "aws_eks_fargate_profile" "eks_fargate_profile" {
     cluster_name           = aws_eks_cluster.eks_cluster.name
-    fargate_profile_name   = "eks-fargate-profile"
+    fargate_profile_name   = "fargate-profile"
     pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution_role.arn
     subnet_ids             = aws_subnet.private[*].id
 
@@ -208,6 +208,10 @@ resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
 
 data "aws_iam_openid_connect_provider" "eks_identifier" {
     url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+
+    lifecycle {
+        ignore_changes = [url]
+    }
 }
 
 data "aws_iam_policy_document" "alb_controller_assume_role" {
@@ -260,4 +264,14 @@ resource "aws_iam_role" "eks_irsa_ecr_role" {
 resource "aws_iam_role_policy_attachment" "eks_irsa_role_policy_attachment" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
     role       = aws_iam_role.eks_irsa_ecr_role.name
+}
+
+resource "kubernetes_service_account" "ecr_sa" {
+  metadata {
+    name      = "ecr-sa"
+    namespace = "default"
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.eks_irsa_ecr_role.arn
+    }
+  }
 }

@@ -11,5 +11,6 @@ output "private_subnet_ids" {
 }
 
 output "db_url" {
-  value = module.vpc.db_url
+    value = module.vpc.db_url
+    sensitive = true
 }

@@ -12,4 +12,5 @@ output "private_subnet_ids" {
 
 output "db_url" {
   value = "postgres://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.endpoint}:5432/${var.db_name}"
+  sensitive = true
 }

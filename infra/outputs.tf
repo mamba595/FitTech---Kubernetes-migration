@@ -14,3 +14,11 @@ output "db_url" {
     value = module.vpc.db_url
     sensitive = true
 }
+
+output "cluster_name" {
+    value = module.vpc.cluster_name
+}
+
+output "aws_alb_controller_arn" {
+    value = module.vpc.aws_alb_controller_arn
+}

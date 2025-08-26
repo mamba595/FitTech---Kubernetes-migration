@@ -14,3 +14,11 @@ output "db_url" {
   value = "postgres://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.endpoint}:5432/${var.db_name}"
   sensitive = true
 }
+
+output "cluster_name" {
+  value = aws_eks_cluster.eks_cluster.name
+}
+
+output "aws_alb_controller_arn" {
+  value = aws_iam_role.alb_controller.arn
+}

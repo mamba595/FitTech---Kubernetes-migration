@@ -1,4 +1,5 @@
 image: ""
+role: ""
 
 env:
   - name: DATABASE_URL

@@ -16,6 +16,7 @@ spec:
       labels:
         app: my-app
     spec:
+      serviceAccountName: ecr-sa
       containers:
         - name: api
           image: "{{ .Values.image }}"

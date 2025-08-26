@@ -259,10 +259,12 @@ jobs:
         run: |
           helm upgrade --install api ./kubernetes \
             --namespace default \
-            --set env[0].value="$(terraform output -raw db_url)"
-            --set env[1].value=$TF_VAR_secret_key
-            --set env[2].value=$TF_VAR_algorithm
-            --set env[3].value=$TF_VAR_access_token_expire_minutes
+            --set image="$TF_VAR_image" \
+            --set role="${{ secrets.ECR_SA_ROLE }}" \
+            --set env[0].value="$(terraform output -raw db_url)" \
+            --set env[1].value="$TF_VAR_secret_key" \
+            --set env[2].value="$TF_VAR_algorithm" \
+            --set env[3].value="$TF_VAR_access_token_expire_minutes" \
 
       - name: Get the API URL
         run: |

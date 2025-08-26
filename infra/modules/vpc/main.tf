@@ -248,3 +248,29 @@ resource "aws_iam_role_policy_attachment" "alb_controller" {
     policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
     role       = aws_iam_role.alb_controller.name
 }
+
+data "aws_iam_policy_document" "eks_irsa_ecr_document" {
+    statement {
+        actions = ["sts:AssumeRoleWithWebIdentity"]
+        effect  = "Allow"
+        principals {
+            type        = "Federated"
+            identifiers = [data.aws_iam_openid_connect_provider.eks_identifier.arn]
+        }
+        condition {
+            test     = "StringEquals"
+            variable = "${replace(data.aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
+            values   = ["system:serviceaccount:default:ecr-sa"]
+        }
+    }
+}
+
+resource "aws_iam_role" "eks_irsa_ecr_role" {
+    name               = "eks-irsa-ecr-role"
+    assume_role_policy = data.aws_iam_policy_document.eks_irsa_ecr_document.json
+}
+
+resource "aws_iam_role_policy_attachment" "eks_irsa_role_policy_attachment" {
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+    role       = aws_iam_role.eks_irsa_ecr_role.name
+}

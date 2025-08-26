@@ -106,7 +106,7 @@ resource "aws_security_group" "rds_sg" {
         from_port       = 5432
         to_port         = 5432
         protocol        = "tcp"
-        security_groups = [aws_security_group.fargate_profile_sg.id]
+        security_groups = aws_subnet.private[*].cidr_block
     }
 
     egress {
@@ -175,7 +175,6 @@ resource "aws_eks_fargate_profile" "eks_fargate_profile" {
     fargate_profile_name   = "eks-fargate-profile"
     pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution_role.arn
     subnet_ids             = aws_subnet.private[*].id
-    security_group_ids     = [aws_security_group.fargate_profile_sg.id]
 
     selector {
         namespace = "default"
@@ -205,18 +204,6 @@ resource "aws_iam_role" "eks_fargate_pod_execution_role" {
 resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
     role = aws_iam_role.eks_fargate_pod_execution_role.name
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
-}
-
-resource "aws_security_group" "fargate_profile_sg" {
-    name   = "fargate-profile-sg"
-    vpc_id = aws_vpc.my_vpc.id
-
-    egress {
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = aws_subnet.private[*].cidr_block
-    }
 }
 
 data "aws_iam_openid_connect_provider" "eks_identifier" {

@@ -257,7 +257,7 @@ jobs:
 
       - name: Deploy with Helm
         run: |
-          helm upgrade --install api ./kubernetes \
+          helm upgrade --install api ../kubernetes \
             --namespace default \
             --set image="$TF_VAR_image" \
             --set role="${{ secrets.ECR_SA_ROLE }}" \

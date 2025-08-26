@@ -206,10 +206,16 @@ resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
 }
 
-data "aws_iam_openid_connect_provider" "eks_identifier" {
+data "tls_certificate" "oidc" {
     url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
-    depends_on = [aws_eks_cluster.eks_cluster]
 }
+
+resource "aws_iam_openid_connect_provider" "eks_identifier" {
+    url             = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+    client_id_list  = ["sts.amazonaws.com"]
+    thumbprint_list = [data.tls_certificate.oidc.certificates[0].sha1_fingerprint]
+}
+
 
 data "aws_iam_policy_document" "alb_controller_assume_role" {
     statement {
@@ -243,11 +249,11 @@ data "aws_iam_policy_document" "eks_irsa_ecr_document" {
         effect  = "Allow"
         principals {
             type        = "Federated"
-            identifiers = [data.aws_iam_openid_connect_provider.eks_identifier.arn]
+            identifiers = [aws_iam_openid_connect_provider.eks_identifier.arn]
         }
         condition {
             test     = "StringEquals"
-            variable = "${replace(data.aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
+            variable = "${replace(aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
             values   = ["system:serviceaccount:default:ecr-sa"]
         }
     }

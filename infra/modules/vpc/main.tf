@@ -239,8 +239,8 @@ resource "aws_iam_role" "alb_controller" {
 }
 
 resource "aws_iam_policy" "alb_controller_policy" {
-  name        = "alb-controller-policy"
-  policy        = file("${path.module}/alb-controller-policy.json") # Download JSON from AWS official docs
+  name = "alb-controller-policy"
+  policy  = file("${path.module}/iam_policy.json")
 }
 
 resource "aws_iam_role_policy_attachment" "alb_controller" {

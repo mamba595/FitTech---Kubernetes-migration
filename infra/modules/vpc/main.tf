@@ -223,11 +223,11 @@ data "aws_iam_policy_document" "alb_controller_assume_role" {
         effect  = "Allow"
         principals {
             type        = "Federated"
-            identifiers = [data.aws_iam_openid_connect_provider.eks_identifier.arn]
+            identifiers = [aws_iam_openid_connect_provider.eks_identifier.arn]
         }
         condition {
             test     = "StringEquals"
-            variable = "${replace(data.aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
+            variable = "${replace(aws_iam_openid_connect_provider.eks_identifier.url, "https://", "")}:sub"
             values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
         }
     }

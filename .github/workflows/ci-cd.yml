@@ -274,6 +274,8 @@ jobs:
       
       - name: Get the API URL
         run: |
+          kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
+            --timeout=300s service/k8s-service
           API_URL="http://$(kubectl get svc k8s-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):8000"
           echo "API_URL=$API_URL" >> $GITHUB_ENV
 

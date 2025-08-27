@@ -291,9 +291,13 @@ jobs:
             fi
             sleep 10
           done
+
+      - name: Delete the ELB
+        if: always()
+        run: |
+          kubectl delete svc -n default --all
       
       - name: Clean infrastructure
         if: always()
         run: |
-          kubectl delete svc -n default --all
           terraform destroy -auto-approve

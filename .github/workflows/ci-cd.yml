@@ -272,6 +272,9 @@ jobs:
             --set env[2].name=ALGORITHM --set env[2].value="$TF_VAR_algorithm" \
             --set env[3].name=ACCESS_TOKEN_EXPIRE_MINUTES --set env[3].value="$TF_VAR_access_token_expire_minutes"
       
+      - name: Wait for deployment rollout
+        run: kubectl rollout status deployment/k8s-deployment -n default --timeout=180s
+
       - name: Get the API URL
         run: |
           kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
@@ -279,9 +282,16 @@ jobs:
           API_URL="http://$(kubectl get svc k8s-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):8000"
           echo "API_URL=$API_URL" >> $GITHUB_ENV
 
-      - name: Wait for deployment rollout
-        run: kubectl rollout status deployment/k8s-deployment -n default --timeout=180s
-
+      - name: Health check
+        run: |
+          for i in {1..30}; do
+            if curl -f "$API_URL/health"; then
+              echo "Health check completed succcessfully"
+              break
+            fi
+            sleep 10
+          done
+      
       - name: Clean infrastructure
         if: always()
         run: |

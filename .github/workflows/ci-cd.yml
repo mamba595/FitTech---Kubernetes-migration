@@ -298,6 +298,7 @@ jobs:
       - name: Cloudwatch logs
         if: always()
         run: |
+          aws logs tail /aws/eks/eks-cluster/cluster --since 10m --follow
           aws logs tail aws/eks/eks-cluster/fargate/pods --since 10m --follow
 
       - name: Delete the ELB

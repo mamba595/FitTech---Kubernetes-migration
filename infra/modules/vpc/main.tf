@@ -17,6 +17,7 @@ resource "aws_subnet" "public" {
     availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
     tags = {
         Name = "public-${count.index}"
+        "kubernetes.io/cluster/eks-cluster" = "owned"
         "kubernetes.io/role/elb" = "1"
     }
 }
@@ -28,6 +29,7 @@ resource "aws_subnet" "private" {
     availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
     tags = {
         Name = "private-${count.index}"
+        "kubernetes.io/cluster/eks-cluster" = "owned"
         "kubernetes.io/role/internal-elb" = "1"
     }
 }

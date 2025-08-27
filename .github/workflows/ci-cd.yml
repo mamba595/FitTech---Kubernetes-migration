@@ -273,7 +273,10 @@ jobs:
             --set env[3].name=ACCESS_TOKEN_EXPIRE_MINUTES --set env[3].value="$TF_VAR_access_token_expire_minutes"
       
       - name: Wait for deployment rollout
-        run: kubectl rollout status deployment/k8s-deployment -n default --timeout=300s
+        run: |
+          kubectl get pods -n default -o wide
+          kubectl describe pods -n default
+          kubectl rollout status deployment/k8s-deployment -n default --timeout=300s
 
       - name: Get the API URL
         run: |

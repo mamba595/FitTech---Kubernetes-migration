@@ -167,6 +167,10 @@ resource "aws_eks_fargate_profile" "eks_fargate_profile" {
             k8s-app = "kube-dns"
         }
     }
+
+    tags = {
+        "aws:eks:fargate:logging" = "true"
+    }
 }
 
 resource "aws_iam_role" "eks_fargate_pod_execution_role" {
@@ -183,6 +187,21 @@ resource "aws_iam_role" "eks_fargate_pod_execution_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
-    role = aws_iam_role.eks_fargate_pod_execution_role.name
+    role       = aws_iam_role.eks_fargate_pod_execution_role.name
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_fargate_ecr_readonly" {
+  role       = aws_iam_role.eks_fargate_pod_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_cloudwatch_log_group" "eks_fargate" {
+  name              = "aws/eks/${aws_eks_cluster.eks_cluster.name}/fargate/pods"
+  retention_in_days = 1
+}
+
+resource "aws_iam_role_policy_attachment" "fargate_cloudwatch_logging" {
+  role       = aws_iam_role.eks_fargate_pod_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }

@@ -18,7 +18,3 @@ output "db_url" {
 output "cluster_name" {
   value = aws_eks_cluster.eks_cluster.name
 }
-
-output "aws_alb_controller_arn" {
-  value = aws_iam_role.alb_controller.arn
-}

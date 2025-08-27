@@ -295,4 +295,5 @@ jobs:
       - name: Clean infrastructure
         if: always()
         run: |
+          kubectl delete svc -n default --all
           terraform destroy -auto-approve

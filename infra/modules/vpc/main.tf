@@ -168,7 +168,7 @@ resource "aws_eks_node_group" "default" {
         min_size     = 1
     }
 
-    instance_types = ["t3.large"]
+    instance_types = ["t2.micro"]
     disk_size      = 20
 
     ami_type       = "AL2_x86_64"

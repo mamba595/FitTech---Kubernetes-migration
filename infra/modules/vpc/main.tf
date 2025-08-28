@@ -156,52 +156,54 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-resource "aws_eks_fargate_profile" "eks_fargate_profile" {
-    cluster_name           = aws_eks_cluster.eks_cluster.name
-    fargate_profile_name   = "fargate-profile"
-    pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution_role.arn
-    subnet_ids             = aws_subnet.private[*].id
+resource "aws_eks_node_group" "default" {
+    cluster_name    = aws_eks_cluster.eks_cluster.name
+    node_group_name = "default"
+    node_role_arn   = aws_iam_role.eks_nodes.arn
+    subnet_ids      = aws_subnet.private[*].id
 
-    selector {
-        namespace = "default"
+    scaling_config {
+        desired_size = 2
+        max_size     = 3
+        min_size     = 1
     }
 
-    selector {
-        namespace = "kube-system"
-        labels = {
-            k8s-app = "kube-dns"
-        }
-    }
+    instance_types = ["t3.micro"]
+    disk_size      = 20
 
-    tags = {
-        "aws:eks:fargate:logging" = "true"
-    }
+    ami_type       = "AL2_x86_64"
 }
 
-resource "aws_iam_role" "eks_fargate_pod_execution_role" {
-    name = "eks-fargate-pod-execution-role"
+
+resource "aws_iam_role" "eks_nodes" {
+    name = "eks-nodes"
 
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
         Statement =[{
             Effect = "Allow"
             Action = "sts:AssumeRole"
-            Principal = { Service = "eks-fargate-pods.amazonaws.com" }
+            Principal = { Service = "ec2.amazonaws.com" }
         }]
     })
 }
 
-resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
-    role       = aws_iam_role.eks_fargate_pod_execution_role.name
-    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+resource "aws_iam_role_policy_attachment" "eks_worker_node_AmazonEKSWorkerNodePolicy" {
+    role       = aws_iam_role.eks_nodes.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "eks_fargate_ecr_readonly" {
-  role       = aws_iam_role.eks_fargate_pod_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+resource "aws_iam_role_policy_attachment" "eks_worker_node_AmazonEKS_CNI_Policy" {
+    role       = aws_iam_role.eks_nodes.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
-resource "aws_iam_role_policy_attachment" "fargate_cloudwatch_logging" {
-  role       = aws_iam_role.eks_fargate_pod_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+resource "aws_iam_role_policy_attachment" "eks_worker_node_AmazonEC2ContainerRegistryReadOnly" {
+    role       = aws_iam_role.eks_nodes.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_worker_node_cloudwatch_logging" {
+    role       = aws_iam_role.eks_nodes.name
+    policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }

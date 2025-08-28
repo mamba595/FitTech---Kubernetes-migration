@@ -283,7 +283,6 @@ jobs:
           echo "---- Events ----"
           kubectl get events -n default --sort-by=.lastTimestamp | tail -n 20
           aws ec2 describe-network-interfaces --query 'NetworkInterfaces[*].[NetworkInterfaceId,Status,SubnetId,Attachment.InstanceId]'
-          kubectl describe pod k8s-deployment-66ddc6c-shkks -n default
           kubectl rollout status deployment/k8s-deployment -n default --timeout=300s
 
       - name: Get the API URL

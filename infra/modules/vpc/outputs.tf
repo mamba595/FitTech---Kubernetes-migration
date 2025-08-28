@@ -11,7 +11,7 @@ output "private_subnet_ids" {
 }
 
 output "db_url" {
-  value = "postgres://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.endpoint}/${var.db_name}"
+  value = "postgresql+psycopg2://${var.db_username}:${var.db_password}@${aws_db_instance.postgres_db.address}:${aws_db_instance.postgres_db.port}/${var.db_name}"
   sensitive = true
 }
 

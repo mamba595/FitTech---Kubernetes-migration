@@ -12,7 +12,7 @@ resource "aws_vpc" "my_vpc" {
 resource "aws_subnet" "public" {
     count = var.public_count
     vpc_id = aws_vpc.my_vpc.id
-    cidr_block = cidrsubnet(var.vpc_cidr, 3, count.index)
+    cidr_block = cidrsubnet(var.vpc_cidr, 8, count.index)
     map_public_ip_on_launch = true
     availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
     tags = {
@@ -25,7 +25,7 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "private" {
     count             = var.private_count
     vpc_id            = aws_vpc.my_vpc.id
-    cidr_block        = cidrsubnet(var.vpc_cidr, 3, count.index + var.public_count)
+    cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + var.public_count)
     availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
     tags = {
         Name = "private-${count.index}"
@@ -168,7 +168,7 @@ resource "aws_eks_node_group" "default" {
         min_size     = 1
     }
 
-    instance_types = ["t3.medium"]
+    instance_types = ["t3.large"]
     disk_size      = 20
 
     ami_type       = "AL2_x86_64"

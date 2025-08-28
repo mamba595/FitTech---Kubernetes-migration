@@ -285,6 +285,16 @@ jobs:
           aws ec2 describe-network-interfaces --query 'NetworkInterfaces[*].[NetworkInterfaceId,Status,SubnetId,Attachment.InstanceId]'
           kubectl rollout status deployment/k8s-deployment -n default --timeout=300s
 
+      - name: Check why it failed
+        if: failure()
+        run: |
+          kubectl get pods -n default -o wide
+          kubectl describe pods -n default
+          for pod in $(kubectl get pods -n default -o jsonpath='{.items[*].metadata.name}'); do
+            echo "---- Describe $pod ----"
+            kubectl describe pod $pod -n default || true
+          done
+
       - name: Get the API URL
         run: |
           kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
